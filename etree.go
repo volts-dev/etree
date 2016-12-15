@@ -11,8 +11,9 @@ import (
 	"bytes"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
-	//"log"
+	//	"log"
 	"os"
 	"strings"
 )
@@ -29,7 +30,7 @@ var ErrXML = errors.New("etree: invalid XML format")
 // Comment, CharData, or ProcInst.
 type Token interface {
 	dup(parent *Element) Token
-	writeTo(w *bufio.Writer)
+	writeTo(w *bufio.Writer, trimmed bool)
 }
 
 // A Document is the root level object in an etree.  It represents the
@@ -93,6 +94,7 @@ func (d *Document) Copy() *Document {
 	return &Document{*(d.dup(nil).(*Element))}
 }
 
+// # 只返回不修改
 // Root returns the root element of the document, or nil if there is no root
 // element.
 func (d *Document) Root() *Element {
@@ -101,15 +103,27 @@ func (d *Document) Root() *Element {
 			return c
 		}
 	}
+
 	return nil
+	/*
+		d.GetRoot()
+		return &d.Element
+	*/
 }
 
-func (d *Document) SetRoot(e *Element) {
-	for idx, t := range d.Child {
-		if _, ok := t.(*Element); ok {
-			d.Child[idx] = e
+// #寻找第一个元素并设置为Root
+func (d *Document) GetRoot() *Document {
+	for _, t := range d.Child {
+		if e, ok := t.(*Element); ok {
+			d.Element = *e
 		}
 	}
+	return d
+}
+
+// 设置Root
+func (d *Document) SetRoot(e *Element) {
+	d.Element = *e
 	return
 }
 
@@ -142,13 +156,22 @@ func (d *Document) ReadFromString(s string) error {
 	return err
 }
 
+func __WriteToString(ele *Element) (s string, err error) {
+	var b []byte
+	if b, err = ele.WriteToBytes(false); err != nil {
+		fmt.Println("asd", b, err)
+		return
+	}
+	return string(b), nil
+}
+
 // WriteTo serializes an XML document into the writer w. It
 // returns the number of bytes written and any error encountered.
-func (d *Document) WriteTo(w io.Writer) (n int64, err error) {
+func (d *Document) WriteTo(w io.Writer, trimmed bool) (n int64, err error) {
 	cw := newCountWriter(w)
 	b := bufio.NewWriter(cw)
 	for _, c := range d.Child {
-		c.writeTo(b)
+		c.writeTo(b, trimmed)
 	}
 	err, n = b.Flush(), cw.bytes
 	return
@@ -156,30 +179,30 @@ func (d *Document) WriteTo(w io.Writer) (n int64, err error) {
 
 // WriteToFile serializes an XML document into the file named
 // filename.
-func (d *Document) WriteToFile(filename string) error {
+func (d *Document) WriteToFile(filename string, trimmed bool) error {
 	f, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	_, err = d.WriteTo(f)
+	_, err = d.WriteTo(f, trimmed)
 	return err
 }
 
 // WriteToBytes serializes the XML document into a slice of
 // bytes.
-func (d *Document) WriteToBytes() (b []byte, err error) {
+func (d *Document) WriteToBytes(trimmed bool) (b []byte, err error) {
 	var buf bytes.Buffer
-	if _, err = d.WriteTo(&buf); err != nil {
+	if _, err = d.WriteTo(&buf, trimmed); err != nil {
 		return
 	}
 	return buf.Bytes(), nil
 }
 
 // WriteToString serializes the XML document into a string.
-func (d *Document) WriteToString() (s string, err error) {
+func (d *Document) WriteToString(trimmed bool) (s string, err error) {
 	var b []byte
-	if b, err = d.WriteToBytes(); err != nil {
+	if b, err = d.WriteToBytes(trimmed); err != nil {
 		return
 	}
 	return string(b), nil
@@ -210,6 +233,65 @@ func (d *Document) IndentTabs() {
 	d.Element.indent(0, indent)
 }
 
+func (e *Element) WriteToString(trimmed ...bool) (s string, err error) {
+	var lTrimmed bool
+	if len(trimmed) > 0 {
+		lTrimmed = trimmed[0]
+	}
+	var b []byte
+	if b, err = e.WriteToBytes(lTrimmed); err != nil {
+		//fmt.Println("asd", b, err)
+		return
+	}
+	return string(b), nil
+}
+
+func (e *Element) ContentString(trimmed bool) (s string, err error) {
+	s = ""
+	str := ""
+	for _, e := range e.ChildElements() {
+		str, err = e.WriteToString(trimmed)
+		if err != nil {
+			return
+		}
+
+		// 内容不包文件头
+		if strings.HasPrefix(str, "<?xml") {
+			continue
+		}
+		s = s + str
+	}
+	return s, nil
+}
+
+// WriteToBytes serializes the XML document into a slice of
+// bytes.
+func (e *Element) WriteToBytes(trimmed ...bool) (b []byte, err error) {
+	var lTrimmed bool
+	if len(trimmed) > 0 {
+		lTrimmed = trimmed[0]
+	}
+
+	var buf bytes.Buffer
+	if _, err = e.WriteTo(&buf, lTrimmed); err != nil {
+		return
+	}
+	return buf.Bytes(), nil
+}
+
+func (e *Element) WriteTo(w io.Writer, trimmed bool) (n int64, err error) {
+	cw := newCountWriter(w)
+	b := bufio.NewWriter(cw)
+
+	/*	for _, c := range ele.Child {
+		c.writeTo(b)
+	}*/
+
+	e.writeTo(b, trimmed)
+	err, n = b.Flush(), cw.bytes
+	return
+}
+
 // Copy creates a parentless, recursive, deep copy of the element and
 // all its attributes and children. The returned element has no
 // parent but can be parented to a document using the CreateDocument
@@ -219,16 +301,48 @@ func (e *Element) Copy() *Element {
 	return e.dup(parent).(*Element)
 }
 
+func (self *Element) Pop() (ele *Element) {
+	if len(self.Child) > 0 {
+		lTk := self.Child[0]
+		self.Child = self.Child[1:]
+
+		if c, ok := lTk.(*Element); ok {
+			//log.Println("pop", c, ok)
+			return c
+		}
+	}
+	return
+}
+
+func (self *Element) Push(ele *Element) {
+	if ele != nil {
+		ele.Parent = self
+		self.Child = append(self.Child, ele)
+	}
+}
+
 func (self *Element) Insert(index int, value *Element) {
 	// Grow the slice by one element.
 	// make([]Token, len(self.Child)+1)
 	// self.Child[0 : len(self.Child)+1]
 	self.Child = append(self.Child, value)
 	// Use copy to move the upper part of the slice out of the way and open a hole.
+
 	copy(self.Child[index+1:], self.Child[index:])
 	// Store the new value.
+	value.Parent = self // set parent
 	self.Child[index] = value
 	// Return the result.
+	return
+}
+
+func (self *Element) AttrNames() (res_attrs []string) {
+	res_attrs = make([]string, 0)
+
+	for _, attr := range self.Attr {
+		res_attrs = append(res_attrs, attr.Key)
+	}
+
 	return
 }
 
@@ -539,6 +653,17 @@ func (e *Element) stripIndent() {
 	e.Child = newChild
 }
 
+func NewElement(space, tag string) (ele *Element) {
+	ele = &Element{
+		Space: "",
+		Tag:   tag,
+		Attr:  make([]Attr, 0),
+		Child: make([]Token, 0),
+		//Parent: parent,
+	}
+	return
+}
+
 // dup duplicates the element.
 func (e *Element) dup(parent *Element) Token {
 	ne := &Element{
@@ -558,7 +683,7 @@ func (e *Element) dup(parent *Element) Token {
 }
 
 // writeTo serializes the element to the writer w.
-func (e *Element) writeTo(w *bufio.Writer) {
+func (e *Element) writeTo(w *bufio.Writer, trimmed bool) {
 	w.WriteByte('<')
 	if e.Space != "" {
 		w.WriteString(e.Space)
@@ -567,12 +692,14 @@ func (e *Element) writeTo(w *bufio.Writer) {
 	w.WriteString(e.Tag)
 	for _, a := range e.Attr {
 		w.WriteByte(' ')
-		a.writeTo(w)
+		a.writeTo(w, trimmed)
 	}
-	if len(e.Child) > 0 {
+
+	// consider to trim blank element
+	if !trimmed || len(e.Child) > 0 {
 		w.WriteString(">")
 		for _, c := range e.Child {
-			c.writeTo(w)
+			c.writeTo(w, trimmed)
 		}
 		w.Write([]byte{'<', '/'})
 		if e.Space != "" {
@@ -627,7 +754,7 @@ func (e *Element) RemoveAttr(key string) *Attr {
 }
 
 // writeTo serializes the attribute to the writer.
-func (a *Attr) writeTo(w *bufio.Writer) {
+func (a *Attr) writeTo(w *bufio.Writer, trimmed bool) {
 	if a.Space != "" {
 		w.WriteString(a.Space)
 		w.WriteByte(':')
@@ -663,7 +790,7 @@ func (c *CharData) dup(parent *Element) Token {
 }
 
 // writeTo serializes the character data entity to the writer.
-func (c *CharData) writeTo(w *bufio.Writer) {
+func (c *CharData) writeTo(w *bufio.Writer, trimmed bool) {
 	w.WriteString(escape(c.Data))
 }
 
@@ -686,7 +813,7 @@ func (c *Comment) dup(parent *Element) Token {
 }
 
 // writeTo serialies the comment to the writer.
-func (c *Comment) writeTo(w *bufio.Writer) {
+func (c *Comment) writeTo(w *bufio.Writer, trimmed bool) {
 	w.WriteString("<!--")
 	w.WriteString(c.Data)
 	w.WriteString("-->")
@@ -711,7 +838,7 @@ func (d *Directive) dup(parent *Element) Token {
 }
 
 // writeTo serializes the XML directive to the writer.
-func (d *Directive) writeTo(w *bufio.Writer) {
+func (d *Directive) writeTo(w *bufio.Writer, trimmed bool) {
 	w.WriteString("<!")
 	w.WriteString(d.Data)
 	w.WriteString(">")
@@ -736,7 +863,7 @@ func (p *ProcInst) dup(parent *Element) Token {
 }
 
 // writeTo serializes the processing instruction to the writer.
-func (p *ProcInst) writeTo(w *bufio.Writer) {
+func (p *ProcInst) writeTo(w *bufio.Writer, trimmed bool) {
 	w.WriteString("<?")
 	w.WriteString(p.Target)
 	w.WriteByte(' ')

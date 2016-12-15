@@ -2,18 +2,18 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package etree_test
+package etree
 
 import (
 	"os"
 
-	"github.com/beevik/etree"
+	//"github.com/beevik/etree"
 )
 
 // Create an etree Document, add XML entities to it, and serialize it
 // to stdout.
 func ExampleDocument_creating() {
-	doc := etree.NewDocument()
+	doc := NewDocument()
 	doc.CreateProcInst("xml", `version="1.0" encoding="UTF-8"`)
 	doc.CreateProcInst("xml-stylesheet", `type="text/xsl" href="style.xsl"`)
 
@@ -27,7 +27,7 @@ func ExampleDocument_creating() {
 	sally.CreateAttr("name", "Sally")
 
 	doc.Indent(2)
-	doc.WriteTo(os.Stdout)
+	doc.WriteTo(os.Stdout, false)
 	// Output:
 	// <?xml version="1.0" encoding="UTF-8"?>
 	// <?xml-stylesheet type="text/xsl" href="style.xsl"?>
@@ -39,7 +39,7 @@ func ExampleDocument_creating() {
 }
 
 func ExampleDocument_reading() {
-	doc := etree.NewDocument()
+	doc := NewDocument()
 	if err := doc.ReadFromFile("document.xml"); err != nil {
 		panic(err)
 	}
@@ -50,12 +50,12 @@ func ExamplePath() {
       <author>Charles Dickens</author></book><book><title>Ulysses</title>
       <author>James Joyce</author></book></bookstore>`
 
-	doc := etree.NewDocument()
+	doc := NewDocument()
 	doc.ReadFromString(xml)
 	for _, e := range doc.FindElements(".//book[author='Charles Dickens']") {
-		book := etree.CreateDocument(e)
+		book := CreateDocument(e)
 		book.Indent(2)
-		book.WriteTo(os.Stdout)
+		book.WriteTo(os.Stdout, false)
 	}
 	// Output:
 	// <book>

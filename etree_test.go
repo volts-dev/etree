@@ -5,6 +5,7 @@
 package etree
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -29,11 +30,12 @@ func TestDocument(t *testing.T) {
 	doc.IndentTabs()
 
 	// Serialize the document to a string
-	s, err := doc.WriteToString()
+	s, err := doc.WriteToString(false)
 	if err != nil {
 		t.Error("etree: failed to serialize document")
 	}
-
+	docx, err := book.WriteToString(false)
+	fmt.Println(docx, "aa", err)
 	// Make sure the serialized XML matches expectation.
 	expected := `<?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="style.xsl"?>
@@ -134,7 +136,7 @@ func TestDocument(t *testing.T) {
 func TestCopy(t *testing.T) {
 	s := `<store>
 	<book lang="en">
-		<title>Great Expectations</title>
+		<title></title>
 		<author>Charles Dickens</author>
 	</book>
 </store>`
@@ -145,13 +147,13 @@ func TestCopy(t *testing.T) {
 		t.Error("etree: incorrect ReadFromString result")
 	}
 
-	s1, err := doc1.WriteToString()
+	s1, err := doc1.WriteToString(false)
 	if err != nil {
 		t.Error("etree: incorrect WriteToString result")
 	}
 
 	doc2 := doc1.Copy()
-	s2, err := doc2.WriteToString()
+	s2, err := doc2.WriteToString(false)
 	if err != nil {
 		t.Error("etree: incorrect Copy result")
 	}
@@ -170,9 +172,11 @@ func TestCopy(t *testing.T) {
 	}
 
 	e1.Parent.RemoveElement(e1)
-	s1, _ = doc1.WriteToString()
-	s2, _ = doc2.WriteToString()
+	s1, _ = doc1.WriteToString(false)
+	s2, _ = doc2.WriteToString(false)
 	if s1 == s2 {
 		t.Error("etree: incorrect result after RemoveElement")
 	}
+
+	fmt.Print(s1, s2)
 }
