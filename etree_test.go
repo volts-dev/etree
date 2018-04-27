@@ -15,16 +15,20 @@ func TestDocument(t *testing.T) {
 	doc := NewDocument()
 	doc.CreateProcInst("xml", `version="1.0" encoding="UTF-8"`)
 	doc.CreateProcInst("xml-stylesheet", `type="text/xsl" href="style.xsl"`)
+
 	store := doc.CreateElement("store")
 	store.CreateAttr("xmlns:t", "urn:books-com:titles")
 	store.CreateDirective("Directive")
 	store.CreateComment("This is a comment")
+
 	book := store.CreateElement("book")
 	book.CreateAttr("lang", "fr")
 	book.CreateAttr("lang", "en")
+
 	title := book.CreateElement("t:title")
 	title.SetText("Nicholas Nickleby")
 	title.SetText("Great Expectations")
+
 	author := book.CreateElement("author")
 	author.CreateCharData("Charles Dickens")
 	doc.IndentTabs()

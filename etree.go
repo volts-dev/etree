@@ -98,13 +98,14 @@ func (d *Document) Copy() *Document {
 // Root returns the root element of the document, or nil if there is no root
 // element.
 func (d *Document) Root() *Element {
+	ele := &d.Element
 	for _, t := range d.Child {
 		if c, ok := t.(*Element); ok {
-			return c
+			ele = c
 		}
 	}
 
-	return nil
+	return ele
 	/*
 		d.GetRoot()
 		return &d.Element
@@ -247,8 +248,8 @@ func (e *Element) WriteToString(trimmed ...bool) (s string, err error) {
 }
 
 func (e *Element) ContentString(trimmed bool) (s string, err error) {
-	s = ""
-	str := ""
+	s = e.Text()
+	var str string
 	for _, e := range e.ChildElements() {
 		str, err = e.WriteToString(trimmed)
 		if err != nil {
@@ -372,6 +373,10 @@ func (self *Element) AddPrevious(e *Element) {
 }
 
 func (self *Element) GetNext() *Element {
+	if self.Parent == nil {
+		return nil
+	}
+
 	var isnext bool = false
 	for _, t := range self.Parent.Child {
 		// 判断是不是自己
@@ -387,10 +392,15 @@ func (self *Element) GetNext() *Element {
 			return c
 		}
 	}
+
 	return nil
 }
 
 func (self *Element) GetPrevi() (ele *Element) {
+	if self.Parent == nil {
+		return nil
+	}
+
 	for _, t := range self.Parent.Child {
 		if c, ok := t.(*Element); ok {
 			// 自己这返回 上次保存的 ele = c
@@ -477,7 +487,8 @@ func (e *Element) readFrom(ri io.Reader) (n int64, err error) {
 		case err == io.EOF:
 			return r.bytes, nil
 		case err != nil:
-			return r.bytes, err
+			fmt.Println("readFrom case err != nil:", t)
+			//return r.bytes, err
 		case stack.empty():
 			return r.bytes, ErrXML
 		}
@@ -494,6 +505,7 @@ func (e *Element) readFrom(ri io.Reader) (n int64, err error) {
 		case xml.EndElement:
 			stack.pop()
 		case xml.CharData:
+			//fmt.Println("readFrom CharData", string(t))
 			data := string(t)
 			top.createCharData(data, isWhitespace(data))
 		case xml.Comment:
